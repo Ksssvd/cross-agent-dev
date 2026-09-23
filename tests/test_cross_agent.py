@@ -217,6 +217,20 @@ class InstallTest(unittest.TestCase):
         self.assertTrue(agents.rstrip().endswith("后"))
         self.assertEqual(agents.count("cross-agent-dev:end"), 1)
 
+    def test_global_install_is_idempotent_and_safe(self):
+        home = Path(self.tmp.name) / "home"
+        (home / ".agents/skills/continuity").mkdir(parents=True)  # someone else's skill
+        env = {**os.environ, "HOME": str(home)}
+        for _ in range(2):
+            r = subprocess.run(["bash", str(ROOT / "install.sh"), "--global"],
+                               capture_output=True, text=True, env=env)
+            self.assertEqual(r.returncode, 0, r.stderr)
+        link = home / ".claude/skills/continuity"
+        self.assertTrue(link.is_symlink())
+        self.assertTrue((link / "SKILL.md").is_file())
+        self.assertFalse((home / ".agents/skills/continuity").is_symlink())  # left untouched
+        self.assertIn("已存在且指向别处", r.stderr)
+
     def test_refuses_broken_markers(self):
         original = "<!-- cross-agent-dev:start -->\n重要内容\n"
         (self.target / "AGENTS.md").write_text(original, encoding="utf-8")

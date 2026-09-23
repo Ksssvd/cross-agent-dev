@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # 把跨 Agent 接力规则和 continuity skill 装进一个项目。
 #
-#   ./install.sh <项目目录> [--tools claude,opencode,factory]
+#   ./install.sh --global                                      全局安装（推荐）
+#   ./install.sh <项目目录> [--tools claude,opencode,factory]   只装进一个项目
 #
-# 做的事（可重复运行，只改自己管理的部分）：
+# --global：把 skill 软链接到 ~/.claude/skills 和 ~/.agents/skills，所有项目可用。
+#
+# 装进项目时做的事（可重复运行，只改自己管理的部分）：
 #   1. 复制 skill 到 <项目>/.agents/skills/continuity   （Codex 等读这里）
 #   2. 为其他工具建软链接：.claude/skills、.opencode/skills、.factory/skills
 #   3. 在 AGENTS.md 里追加/更新接力规则（标记之间的内容）
@@ -18,17 +21,44 @@ END="<!-- cross-agent-dev:end -->"
 
 TARGET=""
 TOOLS="claude"
+GLOBAL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --global) GLOBAL=1; shift ;;
     --tools) TOOLS="$2"; shift 2 ;;
     --tools=*) TOOLS="${1#*=}"; shift ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) TARGET="$1"; shift ;;
   esac
 done
 
+if [[ "$GLOBAL" == 1 ]]; then
+  for dir in "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+    link="$dir/continuity"
+    mkdir -p "$dir"
+    if [[ -L "$link" && "$(readlink "$link")" == "$SKILL_SRC" ]]; then
+      echo "· $link 已是最新"
+    elif [[ -e "$link" || -L "$link" ]]; then
+      echo "! $link 已存在且指向别处，跳过（请手动处理）" >&2
+    else
+      ln -s "$SKILL_SRC" "$link"
+      echo "✓ $link → $SKILL_SRC"
+    fi
+  done
+  cat <<'MSG'
+
+装好了。最后一步：把下面这行加进你的全局规则文件
+（Codex：~/.codex/AGENTS.md；Claude Code：~/.claude/CLAUDE.md），两个都用就都加：
+
+- 开始开发一个需要多次迭代的项目时，若项目里没有 SPEC.md 和 STATE.md，先用 continuity skill 建档；一次性的小任务不用。
+
+注意：skill 是软链接，请不要移动或删除这个 cross-agent-dev 文件夹。
+MSG
+  exit 0
+fi
+
 if [[ -z "$TARGET" || ! -d "$TARGET" ]]; then
-  echo "用法：./install.sh <项目目录> [--tools claude,opencode,factory]" >&2
+  echo "用法：./install.sh --global  或  ./install.sh <项目目录> [--tools claude,opencode,factory]" >&2
   exit 1
 fi
 TARGET="$(cd "$TARGET" && pwd)"
