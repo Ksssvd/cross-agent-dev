@@ -110,7 +110,7 @@ Finish the subtitle translation pipeline.
 ## Tasks
 - [x] 1. Video upload and audio extraction
 - [~] 2. Transcription — API wired up, timestamp alignment missing (src/asr.ts)
-- [ ] 3. Translation
+- [!] 3. Translation — blocked: no API key for the translation service yet; needs you
 ## Active decisions
 - D1 Use A instead of B for transcription — B is less accurate on Chinese
 ## Open questions
