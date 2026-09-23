@@ -21,9 +21,10 @@
 
 | 组成 | 作用 |
 |---|---|
-| `AGENTS.md` 里的 10 条接力规则 | Codex、OpenCode、Factory 开工时会自动读，Claude Code 通过 `CLAUDE.md` 引用。规则让每个 Agent **开工先对账，干活边做边记** |
+| `AGENTS.md` 里的 11 条接力规则 | Codex、OpenCode、Factory 开工时会自动读，Claude Code 通过 `CLAUDE.md` 引用。规则让每个 Agent **开工先对账，干活边做边记** |
 | `SPEC.md` | 要做什么：目标、范围、关键需求和验收标准。很少变 |
-| `STATE.md` | 做到哪了：任务勾选清单、有效决定和原因、坑、下一步。≤ 80 行 |
+| `STATE.md` | 做到哪了：验证方式、任务勾选清单、有效决定和原因、待确认问题、坑、下一步。≤ 80 行 |
+| git 提交检查 | 连续 3 次提交代码却没更新 STATE.md 时拦下提交。它是 git 自己的机制，对所有 Agent 都生效，用来兜底"Agent 忘了记" |
 | `continuity` skill | 三个动作：**建档**（和你聊需求，生成上面两个文件）、**存档**（换 Agent 前更新进度并提交）、**补交接**（从上个 Agent 的本地聊天记录里补回遗漏的信息） |
 
 信息可信度：**代码、git、测试 > STATE.md > 聊天记录**。两者冲突时以代码为准，并修正 STATE。
@@ -72,7 +73,7 @@ git clone https://github.com/Ksssvd/cross-agent-dev.git ~/cross-agent-dev
 ~/cross-agent-dev/install.sh /path/to/your-project --tools claude,opencode,factory
 ```
 
-这种方式会把规则直接写进项目的 `AGENTS.md`，Skill 也复制进项目（`.agents/skills/continuity`），适合团队共享。安装脚本可以重复运行，只会改它自己管理的部分，不会动你原有的 `AGENTS.md`、`CLAUDE.md` 内容。
+这种方式会把规则直接写进项目的 `AGENTS.md`，Skill 也复制进项目（`.agents/skills/continuity`），并装上 git 提交检查，适合团队共享。全局安装时，这些会在 Agent 第一次给项目建档时自动完成。安装脚本可以重复运行，只会改它自己管理的部分，不会动你原有的 `AGENTS.md`、`CLAUDE.md` 内容。
 
 ## 使用
 
@@ -104,12 +105,16 @@ your-project/
 # STATE · 更新：2026-09-23 14:20 · by Codex
 ## 当前目标
 完成字幕翻译主流程。
+## 验证方式
+- `npm test` —— 全部通过
 ## 任务清单
 - [x] 1. 视频上传与抽音轨
 - [~] 2. 语音转写 —— 已接好接口，差时间轴对齐（src/asr.ts）
 - [ ] 3. 翻译
 ## 有效决定
 - D1 转写用 A 不用 B —— B 中文准确率差
+## 待确认问题
+- Q1 付费用户是否支持批量导出？
 ## 坑 / 已知问题
 - 超过 30 分钟的视频会超时，先不处理
 ## 下一步
@@ -134,6 +139,15 @@ python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --list
 python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 1
 ```
 
+## git 提交检查
+
+规则是"建议"，Agent 偶尔会忘。所以再加一道 git 自己的检查：**连续 3 次提交都改了代码、却没更新 STATE.md 时，拦下这次提交**，提示先更新 STATE。Agent 看到提示会自己补上。
+
+- 只在项目用了 STATE.md 之后才生效，普通项目不受影响。
+- 不会覆盖你已有的 pre-commit，也不碰 husky 等自定义 hooks 目录。
+- 跳过一次：`SKIP_STATE_CHECK=1 git commit ...`
+- 调整次数：`git config continuity.maxCommitsWithoutState 5`（设为 0 关闭）
+
 ## 支持的工具
 
 | 工具 | 读规则 | 读 Skill |
@@ -155,7 +169,8 @@ python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 1
 
 ## 局限
 
-- 规则靠 Agent 自觉遵守，偶尔可能漏记。开工对账和读聊天记录兜底就是为这种情况准备的。
+- 规则靠 Agent 自觉遵守，偶尔可能漏记。git 提交检查、开工对账和读聊天记录兜底就是为这种情况准备的。
+- 同一时间只适合一个 Agent 在干活。如果同时开多个 Agent 并行开发，它们会同时改同一个 STATE.md，容易冲突。
 - 读聊天记录目前只支持 Claude Code 和 Codex。这两个工具升级后如果改了记录格式，可能需要更新脚本。
 - 规则和模板目前是中文写的。各家 Agent 都能正常理解，只是英文用户读起来不太直观。
 

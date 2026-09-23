@@ -11,6 +11,7 @@
 #   2. 为其他工具建软链接：.claude/skills、.opencode/skills、.factory/skills
 #   3. 在 AGENTS.md 里追加/更新接力规则（标记之间的内容）
 #   4. 确保 CLAUDE.md 里有一行 @AGENTS.md（Claude Code 通过它读规则）
+#   5. 装 git 提交检查：连续多次提交代码却没更新 STATE.md 时拦下
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,8 +130,10 @@ if [[ " ${TOOL_LIST[*]} " == *" claude "* ]]; then
   fi
 fi
 
-if ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "! 这个目录还不是 git 仓库。接力依赖 git 记录进度，建议先运行：git -C \"$TARGET\" init" >&2
+if git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  bash "$SKILL_SRC/hooks/install-hook.sh" "$TARGET"
+else
+  echo "! 这个目录还不是 git 仓库。接力依赖 git 记录进度，建议先运行 git init，再重新运行本脚本。" >&2
 fi
 
 cat <<EOF

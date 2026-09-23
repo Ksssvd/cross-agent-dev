@@ -21,9 +21,10 @@ The core idea: **don't hand off at the end — keep notes as you go, and keep th
 
 | Piece | What it does |
 |---|---|
-| 10 handoff rules in `AGENTS.md` | Codex, OpenCode and Factory read `AGENTS.md` automatically; Claude Code reads it through `CLAUDE.md`. The rules make every agent **reconcile before starting and record progress while working** |
+| 11 handoff rules in `AGENTS.md` | Codex, OpenCode and Factory read `AGENTS.md` automatically; Claude Code reads it through `CLAUDE.md`. The rules make every agent **reconcile before starting and record progress while working** |
 | `SPEC.md` | What to build: goal, scope, key requirements with acceptance criteria. Rarely changes |
-| `STATE.md` | Where things stand: task checklist, active decisions with reasons, known pitfalls, next step. ≤ 80 lines |
+| `STATE.md` | Where things stand: how to verify, task checklist, active decisions with reasons, open questions, known pitfalls, next step. ≤ 80 lines |
+| git commit check | Blocks a commit when code has been committed 3 times in a row without updating STATE.md. It's plain git, so it works for every agent — the safety net for "the agent forgot to take notes" |
 | `continuity` skill | Three actions: **init** (talk through requirements and create both files), **checkpoint** (update progress and commit before switching agents), **recover** (rebuild missing context from the previous agent's local transcript) |
 
 Source of truth: **code, git and tests > STATE.md > chat history**. When they disagree, the code wins and STATE is corrected.
@@ -72,7 +73,7 @@ If you also use OpenCode or Factory:
 ~/cross-agent-dev/install.sh /path/to/your-project --tools claude,opencode,factory
 ```
 
-This writes the rules straight into the project's `AGENTS.md` and copies the skill into the project (`.agents/skills/continuity`), which is handy for teams. The installer is safe to re-run: it only touches the parts it manages and leaves your existing `AGENTS.md` / `CLAUDE.md` content alone.
+This writes the rules straight into the project's `AGENTS.md`, copies the skill into the project (`.agents/skills/continuity`) and installs the git commit check, which is handy for teams. With the global install, the agent does all of this the first time it sets up a project. The installer is safe to re-run: it only touches the parts it manages and leaves your existing `AGENTS.md` / `CLAUDE.md` content alone.
 
 ## Usage
 
@@ -104,12 +105,16 @@ A typical `STATE.md`:
 # STATE · updated 2026-09-23 14:20 · by Codex
 ## Current goal
 Finish the subtitle translation pipeline.
+## How to verify
+- `npm test` — all green
 ## Tasks
 - [x] 1. Video upload and audio extraction
 - [~] 2. Transcription — API wired up, timestamp alignment missing (src/asr.ts)
 - [ ] 3. Translation
 ## Active decisions
 - D1 Use A instead of B for transcription — B is less accurate on Chinese
+## Open questions
+- Q1 Should paid users get bulk export?
 ## Pitfalls
 - Videos over 30 min time out; out of scope for now
 ## Next
@@ -134,6 +139,15 @@ python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --list
 python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 1
 ```
 
+## git commit check
+
+Rules are advisory, and agents occasionally forget. So there's a deterministic layer in git itself: **when code has been committed 3 times in a row without touching STATE.md, the next commit is blocked** with a note to update STATE first. Agents read the message and fix it themselves.
+
+- Only kicks in once the project uses STATE.md; other projects are unaffected.
+- Never overwrites an existing pre-commit hook and leaves custom hook directories (husky, etc.) alone.
+- Skip once: `SKIP_STATE_CHECK=1 git commit ...`
+- Change the limit: `git config continuity.maxCommitsWithoutState 5` (0 turns it off)
+
 ## Supported tools
 
 | Tool | Reads rules from | Reads skills from |
@@ -155,7 +169,8 @@ At its core this is just a set of rules and two Markdown files. Any agent that c
 
 ## Limitations
 
-- Rules depend on the agent following them, and it may occasionally skip an update. The start-of-session reconciliation and transcript recovery exist to catch exactly that.
+- Rules depend on the agent following them, and it may occasionally skip an update. The git commit check, start-of-session reconciliation and transcript recovery exist to catch exactly that.
+- It assumes one agent works at a time. Running several agents in parallel means they all edit the same STATE.md, which invites conflicts.
 - Transcript recovery currently supports Claude Code and Codex only, and may need updating if either tool changes its log format.
 - The rules, templates and skill instructions are currently written in Chinese. Agents handle them fine, but they're less readable for English-speaking humans. English versions are welcome.
 

@@ -239,5 +239,76 @@ class InstallTest(unittest.TestCase):
         self.assertEqual((self.target / "AGENTS.md").read_text(encoding="utf-8"), original)
 
 
+class StateHookTest(unittest.TestCase):
+    """The pre-commit check that blocks long streaks of commits without a STATE.md update."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name) / "proj"
+        self.repo.mkdir()
+        self.git("init", "-q")
+        self.git("config", "user.email", "t@example.com")
+        self.git("config", "user.name", "t")
+        self.install_hook()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def git(self, *args, env=None):
+        return subprocess.run(["git", *args], cwd=self.repo, capture_output=True, text=True,
+                              env={**os.environ, **(env or {})})
+
+    def install_hook(self):
+        return subprocess.run(["bash", str(ROOT / "skill/continuity/hooks/install-hook.sh"), str(self.repo)],
+                              capture_output=True, text=True)
+
+    def commit(self, name, with_state=False, env=None):
+        (self.repo / name).write_text(name, encoding="utf-8")
+        self.git("add", name)
+        if with_state:
+            state = self.repo / "STATE.md"
+            state.write_text(state.read_text(encoding="utf-8") + "x\n" if state.exists() else "# STATE\n",
+                             encoding="utf-8")
+            self.git("add", "STATE.md")
+        return self.git("commit", "-q", "-m", name, env=env)
+
+    def test_ignored_until_project_uses_state(self):
+        for i in range(5):
+            self.assertEqual(self.commit(f"f{i}").returncode, 0)
+
+    def test_blocks_third_commit_without_state(self):
+        self.assertEqual(self.commit("a", with_state=True).returncode, 0)
+        self.assertEqual(self.commit("b").returncode, 0)
+        self.assertEqual(self.commit("c").returncode, 0)
+        r = self.commit("d")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("STATE.md 一直没更新", r.stderr)
+        # Updating STATE in the same commit passes, and resets the streak.
+        self.assertEqual(self.commit("d", with_state=True).returncode, 0)
+        self.assertEqual(self.commit("e").returncode, 0)
+
+    def test_skip_and_custom_threshold(self):
+        self.commit("a", with_state=True)
+        self.commit("b")
+        self.commit("c")
+        self.assertEqual(self.commit("d", env={"SKIP_STATE_CHECK": "1"}).returncode, 0)
+        self.git("config", "continuity.maxCommitsWithoutState", "10")
+        self.assertEqual(self.commit("e").returncode, 0)
+
+    def test_installer_is_idempotent_and_respects_existing_hooks(self):
+        self.assertIn("已安装", self.install_hook().stdout)  # rerun just refreshes ours
+        hook = self.repo / ".git/hooks/pre-commit"
+        hook.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
+        r = self.install_hook()
+        self.assertIn("已有别的 pre-commit", r.stderr)
+        self.assertEqual(hook.read_text(encoding="utf-8"), "#!/bin/sh\necho mine\n")
+
+        hook.unlink()
+        self.git("config", "core.hooksPath", ".husky")
+        r = self.install_hook()
+        self.assertIn("core.hooksPath", r.stderr)
+        self.assertFalse(hook.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
