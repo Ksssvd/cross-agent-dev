@@ -34,7 +34,7 @@ Source of truth: **code, git and tests > STATE.md > chat history**. When they di
 This is the main use case. Open the next agent and say "continue this project". It will:
 
 1. Read `SPEC.md` and `STATE.md`, then check `git status`, `git diff` and recent commits.
-2. If STATE is behind the code, read the previous agent's transcript on your machine (Claude Code / Codex), extract decisions and progress, and **verify each item against the code**.
+2. If there are changes STATE doesn't mention (usually just the last stretch before quota ran out), list them briefly and ask you what the intent was, then record it in STATE.
 3. Tell you in a few lines — "The last agent finished task 3; task 4 is half done, still missing X; I'll continue from there" — and wait for your OK before touching anything.
 
 ## Install
@@ -122,6 +122,8 @@ Start with timestamp alignment in task 2.
 ```
 
 ## Transcript recovery (recover)
+
+This is a fallback, not a default step. STATE + git already restore nearly everything, and for the small gap they miss, asking you is cheaper and more accurate. The agent only reads the previous agent's transcript when a project is adopted for the first time (no STATE yet) or when you can't remember why something was done.
 
 - Supports Claude Code (`~/.claude/projects`) and Codex (`~/.codex/sessions`). **Read-only** — transcripts are never modified.
 - Filters out reasoning, tool output and system-injected content. Keeps your own messages, the agent's replies, your answers to multiple-choice questions, and key actions. Codex's own background threads (auto-review, compaction, memory consolidation, sub-agents) are excluded, so they're never mistaken for the previous agent's work.

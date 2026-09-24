@@ -4,7 +4,7 @@
 **开工时**
 1. 先读 SPEC.md 和 STATE.md，再看 git status、git diff、最近 5 条 git log。两个文件不存在时，先用 continuity skill 的 init 和用户聊需求并创建。
 2. 跑一遍 STATE「验证方式」里的命令。STATE 和代码、测试对不上时，以代码和测试为准，并修正 STATE。
-3. 有明显没被 STATE 记录的改动（未提交的 diff、STATE 之后的 commit）时，用 continuity skill 的 recover 补全。
+3. 有没被 STATE 记录的改动（未提交的 diff、STATE 之后的 commit）时，先把看到的改动简要列给用户，问清当时的意图，再补进 STATE。只有项目从没建过 STATE、或用户也说不清时，才用 continuity skill 的 recover 读上个 Agent 的聊天记录补全。
 4. 动手前用 3～5 行告诉用户：做到哪、哪项做了一半、哪项受阻需要用户做什么、准备从哪继续。
 **干活时**
 5. 开始一项任务前，把它标成进行中 [~]，写一句打算怎么做。做不下去时（缺信息、等用户、外部依赖坏了）标成受阻 [!]，写清原因和需要谁做什么；任务只能以完成 [x] 或受阻 [!] 收尾，不要一直挂在 [~]。

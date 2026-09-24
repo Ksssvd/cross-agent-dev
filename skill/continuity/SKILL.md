@@ -1,6 +1,6 @@
 ---
 name: continuity
-description: 跨 Coding Agent 开发接力。在这些情况下使用：项目刚开始或第一次接入（没有 SPEC.md / STATE.md）；用户说要换 Agent、额度快用完、先存个档；用户说"继续这个项目 / 接着做 / 上个 Agent 做到哪了"；STATE.md 明显落后于代码（有没被记录的 diff 或 commit）。维护 SPEC.md（要做什么）和 STATE.md（做到哪了），必要时从上个 Agent 的本地对话记录里补全交接信息。
+description: 跨 Coding Agent 开发接力。在这些情况下使用：项目刚开始或第一次接入（没有 SPEC.md / STATE.md）；用户说要换 Agent、额度快用完、先存个档；用户说"继续这个项目 / 接着做 / 上个 Agent 做到哪了"；STATE.md 落后于代码（有没被记录的 diff 或 commit）。维护 SPEC.md（要做什么）和 STATE.md（做到哪了）；项目从没建过 STATE、或用户也说不清时，从上个 Agent 的本地对话记录里补全。
 ---
 
 # continuity：让下一个 Agent 接得上
@@ -65,7 +65,12 @@ description: 跨 Coding Agent 开发接力。在这些情况下使用：项目�
 
 ## recover：从上个 Agent 的对话记录补全
 
-**什么时候用：** 开工对账时发现 STATE 明显落后，比如有大量没记录的未提交改动、STATE 时间之后还有 commit、`[~]` 项没写清做到哪；或者 SPEC / STATE 根本不存在，但项目已经做了一部分。
+**这是备用手段，不是默认步骤。** STATE + git 已经能恢复绝大部分进度；STATE 落后的那一小段，先问用户最准也最省。读聊天记录有代价：耗 token、会读到隐私内容、可能翻出早已放弃的方案。
+
+**只在这些情况用：**
+- 老项目第一次接入：项目已经做了一部分，但从没建过 SPEC / STATE，过去的决定只在聊天记录里。
+- 你把没记录的改动列给用户后，用户说不清当时为什么这么做，或者直接让你去查。
+- 用户明确要求"去看看上个 Agent 聊了什么"。
 
 1. 列出候选对话：
 
@@ -106,6 +111,6 @@ description: 跨 Coding Agent 开发接力。在这些情况下使用：项目�
 
 1. 读 SPEC、STATE → `git status` / `git diff --stat` / `git log -5 --oneline`。
 2. 跑 STATE「验证方式」里的命令，确认 `[x]` 的项确实成立。
-3. 发现不一致：以代码为准修正 STATE；STATE 明显落后就走 recover。
+3. 发现不一致：以代码为准修正 STATE。有没被记录的改动，先简要列给用户、问清意图再补进 STATE；用户说不清时才走 recover。
 4. 项目还没装提交检查时（`.git/hooks/pre-commit` 里没有 `cross-agent-dev:state-check`），运行 `bash <本 Skill 目录>/hooks/install-hook.sh` 补上。
 5. 动手前用 3～5 行告诉用户："上个 Agent 做到第 X 项；第 Y 项做了一半，差 Z；第 W 项受阻，需要你做 V；有 N 个待确认问题；我从这里继续。"用户确认后再开始。
