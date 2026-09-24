@@ -85,6 +85,14 @@ class RecoverTest(unittest.TestCase):
         write_jsonl(self.codex / "2026/09/23/rollout-sub.jsonl",
                     codex_rows(cwd, source={"subagent": {"thread_spawn": {}}}), mtime=now)
         write_jsonl(self.codex / "2026/09/23/rollout-other.jsonl", codex_rows("/elsewhere"), mtime=now)
+        # Codex background threads: auto-review (both known spellings) and memory consolidation.
+        write_jsonl(self.codex / "2026/09/23/rollout-guardian.jsonl",
+                    codex_rows(cwd, source={"internal": "guardian"}), mtime=now)
+        write_jsonl(self.codex / "2026/09/23/rollout-review.jsonl",
+                    codex_rows(cwd, source={"subagent": "review"}), mtime=now)
+        rows = codex_rows(cwd)
+        rows[0]["payload"]["thread_source"] = "memory_consolidation"
+        write_jsonl(self.codex / "2026/09/23/rollout-memory.jsonl", rows, mtime=now)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -101,7 +109,7 @@ class RecoverTest(unittest.TestCase):
         code, out, _ = self.run_recover("--list", "--current-tool", "claude")
         self.assertEqual(code, 0)
         rows = [l for l in out.splitlines() if l[:3] in ("| 1", "| 2", "| 3")]
-        self.assertEqual(len(rows), 2)  # subagent + other-project sessions excluded
+        self.assertEqual(len(rows), 2)  # sub-agent, background and other-project sessions excluded
         self.assertIn("Codex", rows[0])  # newest first
         self.assertIn("帮我做一个短剧翻译工具", rows[1])
 
@@ -129,6 +137,25 @@ class RecoverTest(unittest.TestCase):
         self.assertIn("还差批量重试", out)
         self.assertIn("操作 · shell: npm test", out)
         self.assertNotIn("environment_context", out)
+
+    def test_search_finds_session_and_message(self):
+        code, out, _ = self.run_recover("--search", "whisper")
+        self.assertEqual(code, 0)
+        self.assertIn("会话 2", out)  # the Claude session is #2 in --list order
+        self.assertIn("ASR 用 Whisper", out)
+        self.assertIn("--session 2 --from", out)
+        self.assertNotIn(FAKE_KEY, out)
+        code, out, _ = self.run_recover("--search", "完全不存在的词")
+        self.assertIn("没有找到", out)
+
+    def test_paging(self):
+        code, out, _ = self.run_recover("--session", "s1", "--from", "0", "--budget", "40")
+        self.assertEqual(code, 0)
+        self.assertIn("#0", out)
+        self.assertIn("下一页：--session s1 --from 1", out)
+        code, _, err = self.run_recover("--session", "s1", "--from", "999")
+        self.assertEqual(code, 1)
+        self.assertIn("超出范围", err)
 
     def test_unknown_session(self):
         code, _, err = self.run_recover("--session", "nope")

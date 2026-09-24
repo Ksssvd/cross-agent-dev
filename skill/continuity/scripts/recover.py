@@ -10,6 +10,8 @@ Usage:
   recover.py                        # excerpt of the most recent previous session
   recover.py --session <id|path>    # excerpt of a specific session
   recover.py --filter keyword       # keep decision/progress-like messages + the tail
+  recover.py --search "支付方案"     # find which session discussed something
+  recover.py --session 2 --from 40  # read a session page by page from message #40
 """
 
 from __future__ import annotations
@@ -85,6 +87,7 @@ class Session:
     mtime: float
     first_user: str = ""
     is_current: bool = False
+    loaded: bool = False
     messages: list[Message] = field(default_factory=list)
 
 
@@ -257,6 +260,17 @@ def load_claude(session: Session) -> None:
 
 # ---------- Codex ----------
 
+# Codex writes its own background threads into the same tree as your conversations:
+# spawned sub-agents, auto-review, /review, compaction, memory consolidation.
+# A structured (dict) `source` is always one of those; plain strings (cli, vscode,
+# exec, ...) are real conversations.
+CODEX_INTERNAL_THREAD_SOURCES = {"subagent", "guardian_review", "memory_consolidation"}
+
+
+def is_codex_background(payload: dict) -> bool:
+    return isinstance(payload.get("source"), dict) or payload.get("thread_source") in CODEX_INTERNAL_THREAD_SOURCES
+
+
 def codex_sessions(root: Path, project: Path) -> list[Session]:
     if not root.is_dir():
         return []
@@ -266,9 +280,8 @@ def codex_sessions(root: Path, project: Path) -> list[Session]:
         if not meta or meta.get("type") != "session_meta":
             continue
         payload = meta.get("payload") or {}
-        source = payload.get("source")
-        if isinstance(source, dict) and source.get("subagent"):
-            continue  # subagent threads belong to a root session
+        if is_codex_background(payload):
+            continue
         cwd = payload.get("cwd") or ""
         if in_project(cwd, project):
             sid = payload.get("id") or path.stem
@@ -325,6 +338,9 @@ def find_sessions(args, project: Path) -> list[Session]:
 
 
 def load(session: Session) -> None:
+    if session.loaded:
+        return
+    session.loaded = True
     (load_claude if session.tool == "claude" else load_codex)(session)
     for m in session.messages:
         if m.role == "user":
@@ -398,13 +414,30 @@ def print_list(sessions: list[Session]) -> None:
     print("\n用 --session <编号或会话 id> 指定一个。")
 
 
-def print_excerpt(s: Session, mode: str, budget: int) -> None:
-    chosen = pick_messages(s.messages, mode, budget)
+def page_from(messages: list[Message], start: int, budget: int) -> list[int]:
+    """Consecutive messages from `start` until the budget runs out (at least one)."""
+    chosen, used = [], 0
+    for i in range(max(0, start), len(messages)):
+        cost = len(shorten(messages[i].text)) + 20
+        if used + cost > budget and chosen:
+            break
+        chosen.append(i)
+        used += cost
+    return chosen
+
+
+def print_excerpt(s: Session, mode: str, budget: int, start: int | None = None) -> None:
+    if start is None:
+        chosen = pick_messages(s.messages, mode, budget)
+        how = f"模式 {mode}"
+    else:
+        chosen = page_from(s.messages, start, budget)
+        how = f"从 #{start} 起逐页读"
     start = s.messages[0].ts if s.messages else None
     end = s.messages[-1].ts if s.messages else None
     print("# 上个 Agent 的对话摘录（recover）\n")
     print(f"- 来源：{TOOL_NAMES[s.tool]} · {fmt_time(start)} → {fmt_time(end)} · 会话 {s.session_id}")
-    print(f"- 共 {len(s.messages)} 条，摘录 {len(chosen)} 条（模式 {mode}，预算 {budget} 字），已自动脱敏")
+    print(f"- 共 {len(s.messages)} 条（编号 #0～#{len(s.messages) - 1}），摘录 {len(chosen)} 条（{how}，预算 {budget} 字），已自动脱敏")
     print("\n> 这是原始材料，不是结论。只提炼：最终决定和原因、任务进度、做了一半的事、坑、下一步。")
     print("> 前后矛盾时以时间靠后的为准；写进 STATE 前先和代码、git、测试核对。不要把原文抄进 STATE。\n")
     last = -1
@@ -414,11 +447,40 @@ def print_excerpt(s: Session, mode: str, budget: int) -> None:
             print(f"_…（跳过 {idx - last - 1} 条）…_\n")
         last = idx
         if m.role == "action":
-            print(f"- [{fmt_time(m.ts)}] 操作 · {redact(m.text)}")
+            print(f"- #{idx} [{fmt_time(m.ts)}] 操作 · {redact(m.text)}")
             continue
-        print(f"\n### [{fmt_time(m.ts)}] {ROLE_NAMES[m.role]}\n")
+        print(f"\n### #{idx} [{fmt_time(m.ts)}] {ROLE_NAMES[m.role]}\n")
         print(redact(shorten(m.text)))
         print()
+
+    sid = s.session_id[:12]
+    if start is not None and chosen and chosen[-1] < len(s.messages) - 1:
+        print(f"\n> 还有 {len(s.messages) - 1 - chosen[-1]} 条。下一页：--session {sid} --from {chosen[-1] + 1}")
+    elif start is None and len(chosen) < len(s.messages):
+        print(f"\n> 跳过了 {len(s.messages) - len(chosen)} 条。要看某段完整内容：--session {sid} --from <编号>")
+
+
+def print_search(sessions: list[Session], query: str, limit: int = 20) -> None:
+    q = query.lower()
+    hits = 0
+    print(f"# 在本项目的对话记录里搜索「{query}」\n")
+    for n, s in enumerate(sessions, 1):
+        load(s)
+        for idx, m in enumerate(s.messages):
+            text = redact(m.text)  # redact before cutting, so a half-cut secret can't slip through
+            pos = text.lower().find(q)
+            if pos < 0:
+                continue
+            snippet = text[max(0, pos - 60): pos + len(query) + 60].replace("\n", " ").strip()
+            note = "（当前对话）" if s.is_current else ""
+            print(f"- 会话 {n}{note} · {TOOL_NAMES[s.tool]} · {fmt_time(m.ts)} · #{idx} {ROLE_NAMES[m.role]}：…{snippet}…")
+            print(f"  读上下文：--session {n} --from {max(0, idx - 3)}")
+            hits += 1
+            if hits >= limit:
+                print(f"\n> 只显示前 {limit} 条，换个更具体的词再搜。")
+                return
+    if not hits:
+        print("没有找到。换个说法，或者用 --list 看看有哪些对话。")
 
 
 def main(argv=None) -> int:
@@ -426,6 +488,8 @@ def main(argv=None) -> int:
     ap.add_argument("--project", default=".", help="项目目录（默认当前目录）")
     ap.add_argument("--list", action="store_true", help="列出候选对话")
     ap.add_argument("--session", help="编号（来自 --list）、会话 id 前缀或文件路径")
+    ap.add_argument("--search", help="在本项目所有对话里搜关键词，找到某个决定是在哪次对话里定的")
+    ap.add_argument("--from", type=int, dest="start", help="从第几条消息开始逐页读（编号见摘录里的 #N）")
     ap.add_argument("--filter", choices=["tail", "keyword"], default="tail", dest="mode")
     ap.add_argument("--budget", type=int, default=DEFAULT_BUDGET, help="输出字数上限")
     ap.add_argument("--include-current", action="store_true", help="允许选中当前正在进行的对话")
@@ -439,6 +503,9 @@ def main(argv=None) -> int:
 
     if args.list:
         print_list(sessions)
+        return 0
+    if args.search:
+        print_search(sessions, args.search)
         return 0
 
     target = None
@@ -464,7 +531,10 @@ def main(argv=None) -> int:
     if not target.messages:
         print(f"对话记录格式没读懂或是空的：{target.path}。不要猜，改用 STATE + git 恢复。", file=sys.stderr)
         return 2
-    print_excerpt(target, args.mode, args.budget)
+    if args.start is not None and not 0 <= args.start < len(target.messages):
+        print(f"--from 超出范围：这个对话只有 #0～#{len(target.messages) - 1}。", file=sys.stderr)
+        return 1
+    print_excerpt(target, args.mode, args.budget, args.start)
     return 0
 
 

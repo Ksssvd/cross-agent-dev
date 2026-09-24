@@ -124,7 +124,8 @@ your-project/
 ## 读聊天记录兜底（recover）
 
 - 支持 Claude Code（`~/.claude/projects`）和 Codex（`~/.codex/sessions`）。**只读**，不修改任何记录。
-- 会过滤掉思考过程、工具输出和系统自动注入的内容；保留你的原话、Agent 的回复、你在选择题里做的选择，以及关键操作。
+- 会过滤掉思考过程、工具输出和系统自动注入的内容；保留你的原话、Agent 的回复、你在选择题里做的选择，以及关键操作。Codex 自己在后台跑的对话（自动审查、对话压缩、记忆整理、子 Agent）会被排除，不会被当成上一个 Agent 的工作。
+- 可以在本项目所有历史对话里搜关键词，找到某个决定是在哪次对话里定的；长对话可以按编号逐页读，不会丢内容。
 - 密钥、token、密码等会被自动脱敏。
 - 只把**提炼出的结论**写进 STATE，聊天原文不会进 git。
 - 格式读不懂时直接报错，不瞎猜，改用 STATE + git 恢复。
@@ -137,6 +138,14 @@ python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --list
 
 ```bash
 python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 1
+```
+
+```bash
+python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --search "支付方案"
+```
+
+```bash
+python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 2 --from 40
 ```
 
 ## git 提交检查

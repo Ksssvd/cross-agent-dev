@@ -124,7 +124,8 @@ Start with timestamp alignment in task 2.
 ## Transcript recovery (recover)
 
 - Supports Claude Code (`~/.claude/projects`) and Codex (`~/.codex/sessions`). **Read-only** — transcripts are never modified.
-- Filters out reasoning, tool output and system-injected content. Keeps your own messages, the agent's replies, your answers to multiple-choice questions, and key actions.
+- Filters out reasoning, tool output and system-injected content. Keeps your own messages, the agent's replies, your answers to multiple-choice questions, and key actions. Codex's own background threads (auto-review, compaction, memory consolidation, sub-agents) are excluded, so they're never mistaken for the previous agent's work.
+- Search every past session of the project to find where a decision was made, and read long sessions page by page by message number instead of losing the middle.
 - Automatically redacts API keys, tokens and passwords.
 - Only the **distilled conclusions** go into STATE; raw chat never lands in git.
 - If it can't understand a transcript format, it says so instead of guessing, and falls back to STATE + git.
@@ -137,6 +138,14 @@ python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --list
 
 ```bash
 python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 1
+```
+
+```bash
+python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --search "payment flow"
+```
+
+```bash
+python3 ~/cross-agent-dev/skill/continuity/scripts/recover.py --session 2 --from 40
 ```
 
 ## git commit check
